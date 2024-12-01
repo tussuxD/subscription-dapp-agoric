@@ -1,0 +1,17 @@
+{
+  "name": "start-offer-up",
+  "script": "start-offer-up.js",
+  "permit": "start-offer-up-permit.json",
+  "bundles": [
+    {
+      "entrypoint": "../src/offer-up.contract.js",
+      "bundleID": "b1-85c05c9344ffe246b015620653df2439bd75526524164d63206742d8189233d5bb23a005cda2a21b9059205e98712127427a4accd7b9a9e8fb4e78617889a352",
+      "fileName": "/Users/jatinsinha/.agoric/cache/b1-85c05c9344ffe246b015620653df2439bd75526524164d63206742d8189233d5bb23a005cda2a21b9059205e98712127427a4accd7b9a9e8fb4e78617889a352.json"
+    },
+    {
+      "entrypoint": "../src/offer-up-proposal.js",
+      "bundleID": "b1-48b58bdefebb2f83cd3e5c5d9634ca8a55ebf903848878713a5d5af96dbc78b5ad1dba68788fa83a128496b7218a4729d0608101459b2a1d9f0317b28027342d",
+      "fileName": "/Users/jatinsinha/.agoric/cache/b1-48b58bdefebb2f83cd3e5c5d9634ca8a55ebf903848878713a5d5af96dbc78b5ad1dba68788fa83a128496b7218a4729d0608101459b2a1d9f0317b28027342d.json"
+    }
+  ]
+}
