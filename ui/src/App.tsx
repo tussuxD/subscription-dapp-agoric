@@ -11,44 +11,20 @@ import {
   suggestChain,
 } from '@agoric/web-components';
 import { subscribeLatest } from '@agoric/notifier';
-import { makeCopyBag } from '@agoric/store';
 import { Logos } from './components/Logos';
 import { Inventory } from './components/Inventory';
-import { Trade } from './components/Trade';
-
-const { entries, fromEntries } = Object;
-
-type Wallet = Awaited<ReturnType<typeof makeAgoricWalletConnection>>;
 
 const ENDPOINTS = {
   RPC: 'http://localhost:26657',
   API: 'http://localhost:1317',
 };
 
-const codeSpaceHostName = import.meta.env.VITE_HOSTNAME;
-
-const codeSpaceDomain = import.meta.env
-  .VITE_GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN;
-
-if (codeSpaceHostName) {
-  ENDPOINTS.API = `https://${codeSpaceHostName}-1317.${codeSpaceDomain}`;
-  ENDPOINTS.RPC = `https://${codeSpaceHostName}-26657.${codeSpaceDomain}`;
-}
-if (codeSpaceHostName && codeSpaceDomain) {
-  ENDPOINTS.API = `https://${codeSpaceHostName}-1317.${codeSpaceDomain}`;
-  ENDPOINTS.RPC = `https://${codeSpaceHostName}-26657.${codeSpaceDomain}`;
-} else {
-  console.error(
-    'Missing environment variables: VITE_HOSTNAME or VITE_GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN',
-  );
-}
 const watcher = makeAgoricChainStorageWatcher(ENDPOINTS.API, 'agoriclocal');
 
 interface AppState {
   wallet?: Wallet;
-  offerUpInstance?: unknown;
-  brands?: Record<string, unknown>;
   purses?: Array<Purse>;
+  subscriptionInstance?: unknown;
 }
 
 const useAppStore = create<AppState>(() => ({}));
@@ -57,19 +33,9 @@ const setup = async () => {
   watcher.watchLatest<Array<[string, unknown]>>(
     [Kind.Data, 'published.agoricNames.instance'],
     instances => {
-      console.log('got instances', instances);
+      console.log('Got instances:', instances);
       useAppStore.setState({
-        offerUpInstance: instances.find(([name]) => name === 'offerUp')!.at(1),
-      });
-    },
-  );
-
-  watcher.watchLatest<Array<[string, unknown]>>(
-    [Kind.Data, 'published.agoricNames.brand'],
-    brands => {
-      console.log('Got brands', brands);
-      useAppStore.setState({
-        brands: fromEntries(brands),
+        subscriptionInstance: instances.find(([name]) => name === 'Subscription')?.[1],
       });
     },
   );
@@ -79,40 +45,39 @@ const connectWallet = async () => {
   await suggestChain('https://local.agoric.net/network-config');
   const wallet = await makeAgoricWalletConnection(watcher, ENDPOINTS.RPC);
   useAppStore.setState({ wallet });
+
   const { pursesNotifier } = wallet;
   for await (const purses of subscribeLatest<Purse[]>(pursesNotifier)) {
-    console.log('got purses', purses);
+    console.log('Got purses:', purses);
     useAppStore.setState({ purses });
   }
 };
 
-const makeOffer = (giveValue: bigint, wantChoices: Record<string, bigint>) => {
-  const { wallet, offerUpInstance, brands } = useAppStore.getState();
-  if (!offerUpInstance) throw Error('no contract instance');
-  if (!(brands && brands.IST && brands.Item))
-    throw Error('brands not available');
+const makeSubscriptionOffer = async (user: string) => {
+  const { wallet, subscriptionInstance, purses } = useAppStore.getState();
 
-  const value = makeCopyBag(entries(wantChoices));
-  const want = { Items: { brand: brands.Item, value } };
-  const give = { Price: { brand: brands.IST, value: giveValue } };
+  if (!subscriptionInstance) throw Error('Subscription instance not found');
+  if (!purses) throw Error('Purses not loaded');
 
+  const pricePurse = purses.find(purse => purse.brandPetname === 'IST');
+  if (!pricePurse) throw Error('IST purse not found');
+
+  const priceAmount = pricePurse.currentAmount;
   wallet?.makeOffer(
     {
       source: 'contract',
-      instance: offerUpInstance,
-      publicInvitationMaker: 'makeTradeInvitation',
+      instance: subscriptionInstance,
+      publicInvitationMaker: 'makeSubscriptionInvitation',
     },
-    { give, want },
-    undefined,
+    { give: { Price: priceAmount } },
+    { user },
     (update: { status: string; data?: unknown }) => {
       if (update.status === 'error') {
-        alert(`Offer error: ${update.data}`);
-      }
-      if (update.status === 'accepted') {
-        alert('Offer accepted');
-      }
-      if (update.status === 'refunded') {
-        alert('Offer rejected');
+        alert(`Subscription error: ${update.data}`);
+      } else if (update.status === 'accepted') {
+        alert('Subscription successful');
+      } else if (update.status === 'refunded') {
+        alert('Subscription refunded');
       }
     },
   );
@@ -127,39 +92,34 @@ function App() {
     wallet,
     purses,
   }));
-  const istPurse = purses?.find(p => p.brandPetname === 'IST');
-  const itemsPurse = purses?.find(p => p.brandPetname === 'Item');
 
   const tryConnectWallet = () => {
     connectWallet().catch(err => {
-      switch (err.message) {
-        case 'KEPLR_CONNECTION_ERROR_NO_SMART_WALLET':
-          alert('no smart wallet at that address');
-          break;
-        default:
-          alert(err.message);
-      }
+      console.error(err);
+      alert('Failed to connect wallet');
     });
+  };
+
+  const subscribe = () => {
+    const user = prompt('Enter your name for the subscription');
+    if (user) {
+      makeSubscriptionOffer(user).catch(err => {
+        console.error(err);
+        alert('Failed to make subscription offer');
+      });
+    }
   };
 
   return (
     <>
       <Logos />
-      <h1>Items Listed on Offer Up</h1>
-
+      <h1>Subscription DApp</h1>
       <div className="card">
-        <Trade
-          makeOffer={makeOffer}
-          istPurse={istPurse as Purse}
-          walletConnected={!!wallet}
-        />
-        <hr />
-        {wallet && istPurse ? (
-          <Inventory
-            address={wallet.address}
-            istPurse={istPurse}
-            itemsPurse={itemsPurse as Purse}
-          />
+        {wallet ? (
+          <>
+            <Inventory wallet={wallet} purses={purses || []} />
+            <button onClick={subscribe}>Subscribe</button>
+          </>
         ) : (
           <button onClick={tryConnectWallet}>Connect Wallet</button>
         )}
